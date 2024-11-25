@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies for ZED
-RUN pip3 install PyOpenGL PyOpenGL_accelerate requests \
+RUN pip3 install PyOpenGL PyOpenGL_accelerate requests && \
     pip3 install -U colcon-bash
 
 # @TODO: What is this for?
