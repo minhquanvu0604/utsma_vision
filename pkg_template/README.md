@@ -1,1 +1,0 @@
-# utsma_vision
