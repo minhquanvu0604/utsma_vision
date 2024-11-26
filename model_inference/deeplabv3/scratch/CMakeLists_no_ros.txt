@@ -1,0 +1,101 @@
+# catkin package
+# fails to set catkin_package LIBRARIES
+
+cmake_minimum_required(VERSION 3.0.2)
+project(model_inference)
+
+# Find dependencies
+find_package(catkin REQUIRED COMPONENTS
+  roscpp  # Add any ROS dependencies if required
+)
+find_package(Torch REQUIRED)
+find_package(OpenCV REQUIRED)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+###################################
+## catkin specific configuration ##
+###################################
+set(Torch_INCLUDE_DIRS /opt/libtorch/include)
+set(Torch_LIBRARIES /opt/libtorch/lib)
+
+catkin_package(
+  INCLUDE_DIRS include ${Torch_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS}
+  LIBRARIES ${PROJECT_NAME} ${Torch_LIBRARIES} ${OpenCV_LIBS}
+  CATKIN_DEPENDS roscpp
+  DEPENDS Torch OpenCV
+)
+
+###################################
+## Include directories ##
+###################################
+include_directories(
+  include
+  ${catkin_INCLUDE_DIRS}
+  ${Torch_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
+)
+
+
+###################################
+## Add the library ##
+###################################
+add_library(${PROJECT_NAME} SHARED src/predict.cpp)
+
+# Link against LibTorch and OpenCV
+target_link_libraries(${PROJECT_NAME} 
+                      ${catkin_LIBRARIES}
+                      ${Torch_LIBRARIES}/libtorch.so
+                      ${OpenCV_LIBS}
+                      opencv_imgcodecs opencv_highgui)
+
+###################################
+## Add an executable for testing ##
+###################################
+add_executable(predict_demo src/predict_demo.cpp)
+
+# Link the executable with the inference library
+target_link_libraries(predict_demo ${PROJECT_NAME} ${catkin_LIBRARIES} ${OpenCV_LIBS} ${Torch_LIBRARIES})
+
+###################################
+## Install Targets ##
+###################################
+# Install library
+install(TARGETS ${PROJECT_NAME}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+)
+
+# Install the executable 
+install(TARGETS predict_demo
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+# Install the header files
+install(DIRECTORY include/${PROJECT_NAME}/
+  DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+)
+
+###################################
+## Export configuration ##
+###################################
+# Set the paths to be used by other packages
+install(EXPORT ${PROJECT_NAME}Targets
+  FILE ${PROJECT_NAME}Targets.cmake
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake
+)
+
+# Generate the config file for other packages to use
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+  ${CMAKE_CURRENT_SOURCE_DIR}/cmake/model_inferenceConfig.cmake.in
+  ${CMAKE_CURRENT_BINARY_DIR}/model_inferenceConfig.cmake
+  INSTALL_DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake
+)
+
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/model_inferenceConfig.cmake"
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}/cmake)

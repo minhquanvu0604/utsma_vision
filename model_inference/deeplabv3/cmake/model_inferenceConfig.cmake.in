@@ -1,0 +1,14 @@
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+find_dependency(OpenCV REQUIRED)
+find_dependency(Torch REQUIRED)
+
+include("${CMAKE_CURRENT_LIST_DIR}/model_inferenceTargets.cmake")
+
+set_and_check(model_inference_INCLUDE_DIRS "@PACKAGE_INCLUDE_INSTALL_DIR@")
+set_and_check(model_inference_LIBRARIES "@PACKAGE_LIBRARY_INSTALL_DIR@/libmodel_inference.so")
+
+# Provide information to dependent projects
+check_required_components(model_inference)
