@@ -10,11 +10,12 @@ import cv2
 import torch
 import numpy as np
 from tf2_ros import TransformListener, Buffer
-import tf_transformations
+# import tf_transformations
 from std_msgs.msg import Header
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, PointCloud2
 from geometry_msgs.msg import Point
-from eufs_msgs.msg import ConeArray  # Replace with your actual package name
+from eufs_msgs.msg import ConeArrayWithCovariance, ConeWithCovariance
+
 from cv_bridge import CvBridge
 from time import time
 
@@ -24,6 +25,18 @@ class YoloNode(Node):
     @class YoloNode
     @brief A ROS2 node for cone detection and publishing cone positions as a ConeArray message and annotated images.
     """
+
+    # Define a color map for cone types (RGB format)
+    COLOR_MAP = {
+        0: (0, 0, 255),    # Blue cone
+        1: (255, 255, 0),  # Yellow cone
+        2: (255, 165, 0),  # Orange cone
+        3: (255, 140, 0),  # Big orange cone
+        'default': (128, 128, 128)  # Unknown cone
+    }
+
+    IMAGE_WIDTH = 1280
+
     def __init__(self):
         """
         @brief Constructor for the YoloNode class.
@@ -32,36 +45,55 @@ class YoloNode(Node):
         super().__init__('yolo_node')
 
         # Publishers
-        self.pub_cone_array = self.create_publisher(ConeArray, '/bb_cone_array', 10)
+        self.pub_cone_array = self.create_publisher(ConeArrayWithCovariance, '/bb_cone_array', 10)
         self.raw_image_pub = self.create_publisher(Image, '/bb_image', 10)
 
-        # Subscribers
+        # The depth map from the ZED ROS wrapper is usually aligned with the left camera
         self.image_sub = self.create_subscription(
             Image,
-            '/zed/left/image_raw',
+            '/zed/zed_node/left/image_rect_color',
             self.image_callback,
             10
         )
 
+        # TODO: use depth image instead
+        # shape of the pointcloud is (1228800, 3) which is a flat list of points, each point has 3 coordinates (x, y, z)
         self.point_cloud_sub = self.create_subscription(
-            Image,
-            '/zed/point_cloud',
-            self.point_cloud_callback,
+            PointCloud2,
+            '/zed/zed_node/point_cloud/cloud_registered',
+            self.pointcloud_callback,
             10
         )
+        # self.depth_sub = self.create_subscription(
+        #     Image,
+        #     '/zed2/depth/depth_registered',  # Replace with your depth topic
+        #     self.depth_callback,
+        #     10
+        # )
+
 
         # TF2 Buffer and Listener
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        # YOLOv5 model loading
-        self.model = torch.hub.load(
-            '/home/ros2_ws/src/computer_vision/coord_light_yolov5/scripts/yolov5',
-            'custom',
-            '/home/ros2_ws/src/computer_vision/coord_light_yolov5/scripts/yolov5/best.pt',
-            source='local',
-            force_reload=True
-        )
+        # YOLOv5 model loading 
+        try:
+            self.model = torch.hub.load(
+                '/root/ros2_ws/src/utsma_vision/model_inference/coord_light_yolov5/scripts/yolov5',
+                'custom',
+                '/root/ros2_ws/src/utsma_vision/model_inference/coord_light_yolov5/scripts/yolov5/best.pt',
+                source='local',
+                force_reload=True
+            )
+            # model_path = '/root/ros2_ws/src/utsma_vision/model_inference/coord_light_yolov5/scripts/best.pt'
+            # self.model = torch.load(model_path, map_location=torch.device('cuda'))
+            self.model.eval()  
+
+            self.get_logger().info("YOLOv5 model loaded successfully.")
+        except Exception as e:
+            self.get_logger().error(f"Failed to load YOLO model: {e}")
+            raise
+
         self.bridge = CvBridge()
 
         # Data buffers
@@ -84,25 +116,31 @@ class YoloNode(Node):
         try:
             self.image_data = self.bridge.imgmsg_to_cv2(msg, desired_encoding='rgb8')
             self.last_image_time = time()
-            self.get_logger().debug("Image received.")
             self.process_image()
         except Exception as e:
             self.get_logger().error(f"Failed to convert image: {e}")
 
-    def point_cloud_callback(self, msg):
-        """
-        @brief Callback for the point cloud topic.
-        Converts the ROS Image message (point cloud) to OpenCV format for 3D processing.
+    def pointcloud_callback(self, msg):
+        self.get_logger().info("PointCloud2 data received.")
+        
+        # Convert PointCloud2 to numpy array and store in the class variable
+        self.point_cloud_data = self.pointcloud2_to_array(msg)
 
-        @param msg The ROS Image message containing the point cloud.
-        """
-        try:
-            self.point_cloud_data = self.bridge.imgmsg_to_cv2(msg, desired_encoding='32FC1')
-            self.last_point_cloud_time = time()
-            self.get_logger().debug("Point cloud received.")
-        except Exception as e:
-            self.get_logger().error(f"Failed to convert point cloud: {e}")
+        # self.get_logger().info(f"Point cloud data type: {type(self.point_cloud_data)}")
+        # self.get_logger().info(f"Point cloud shape: {self.point_cloud_data.shape}")
+        # self.get_logger().info(f"Point cloud sample: {self.point_cloud_data[:5]}")  # Print the first few points
 
+    @staticmethod
+    def pointcloud2_to_array(msg):
+        """
+        Convert a ROS2 PointCloud2 message to a numpy array.
+        """
+        dtype_list = [
+            ('x', np.float32), ('y', np.float32), ('z', np.float32)
+        ]
+        data = np.frombuffer(msg.data, dtype=np.dtype(dtype_list))
+        points = np.column_stack((data['x'], data['y'], data['z']))
+        return points
 
     def process_image(self):
         """
@@ -121,27 +159,11 @@ class YoloNode(Node):
         # Perform YOLO detection
         results = self.model(self.image_data, size=640)
 
-        # Define a color map for cone types (RGB format)
-        color_map = {
-            0: (0, 0, 255),    # Blue cone
-            1: (255, 255, 0),  # Yellow cone
-            2: (255, 165, 0),  # Orange cone
-            3: (255, 140, 0),  # Big orange cone
-            'default': (128, 128, 128)  # Unknown cone
-        }
-
         # Initialize ConeArray message
-        cone_array_msg = ConeArray()
+        cone_array_msg = ConeArrayWithCovariance()
         cone_array_msg.header = Header()
         cone_array_msg.header.stamp = self.get_clock().now().to_msg()
-        cone_array_msg.header.frame_id = 'camera_frame'  # Use camera frame instead of world frame
-
-        # Lists for each cone color
-        blue_cones = []
-        yellow_cones = []
-        orange_cones = []
-        big_orange_cones = []
-        unknown_cones = []
+        cone_array_msg.header.frame_id = 'zed_left_camera_frame'
 
         # Copy image for annotation
         annotated_image = self.image_data.copy()
@@ -157,24 +179,67 @@ class YoloNode(Node):
                 self.get_logger().warn(f"Bounding box {x_min, y_min, x_max, y_max} out of image bounds. Skipping.")
                 continue
 
-            # Calculate the center of the bounding box
+            # # Calculate the center of the bounding box
             center_x = (x_min + x_max) // 2
             center_y = (y_min + y_max) // 2
+            self.get_logger().info(f"Center X: {center_x}, Center Y: {center_y}")
 
-            # Retrieve depth from point cloud
+            # Retrieve depth from point cloud with smoothing
             try:
-                depth_point = self.point_cloud_data[center_y, center_x]  # Access depth from point cloud
-                X_cam, Y_cam, Z_cam = depth_point[:3] if len(depth_point) >= 3 else (None, None, None)
+                kernel_size = 5  # Define the size of the smoothing kernel (e.g., 3x3, 5x5, etc.)
+                half_k = kernel_size // 2
 
-                if X_cam is None or Y_cam is None or Z_cam is None or Z_cam <= 0:
-                    self.get_logger().warn(f"Invalid point cloud depth at ({center_x}, {center_y}). Skipping.")
-                    continue
+                # Initialize a list to hold valid depths
+                valid_depths = []
+                
+                # Loop through the kernel region
+                for dy in range(-half_k, half_k + 1):
+                    for dx in range(-half_k, half_k + 1):
+                        px = center_x + dx
+                        py = center_y + dy
 
-                self.get_logger().info(f"Point cloud depth for cone: {Z_cam:.2f} meters")
+                        # Check if the coordinates are within bounds
+                        if px < 0 or px >= YoloNode.IMAGE_WIDTH or py < 0 or py >= len(self.point_cloud_data):
+                            self.get_logger().warn(f"Out of bounds: px={px}, py={py}")
+                            continue
+
+                        # Compute the flat index
+                        index = py * YoloNode.IMAGE_WIDTH + px
+
+                        if index < 0 or index >= self.point_cloud_data.shape[0]:
+                            self.get_logger().warn(f"Invalid index {index}")
+                            continue
+
+                        # Access the point
+                        point = self.point_cloud_data[index]
+                        x, y, z = point  # Unpack x, y, z coordinates
+
+                        # Check validity of depth (z-coordinate)
+                        if np.isfinite(z) and z > 0:
+                            valid_depths.append(z)  # Append valid depth
+                            self.get_logger().info(f"Valid point at index {index}: {x}, {y}, {z}")
+                        else:
+                            self.get_logger().warn(f"Invalid depth value at index {index}: {z}")
+
+                # Check if we have valid depths
+                if valid_depths:
+                    Z_cam = np.mean(valid_depths)  # Compute the average depth
+                    self.get_logger().info(f"Smoothed depth: {Z_cam:.2f} meters")
+
+                    # Retrieve the corresponding X and Y coordinates
+                    index_center = center_y * YoloNode.IMAGE_WIDTH + center_x
+                    X_cam = self.point_cloud_data[index_center, 0]
+                    Y_cam = self.point_cloud_data[index_center, 1]
+                else:
+                    raise ValueError("No valid depth values found in the region.")
 
             except IndexError:
                 self.get_logger().warn(f"Point cloud index out of range for ({center_x}, {center_y}). Skipping.")
-                continue
+            except ValueError as e:
+                self.get_logger().warn(f"Depth error: {e}")
+            except Exception as e:
+                self.get_logger().error(f"Unexpected error: {e}")
+
 
             # Comment out the world coordinate transformation
             # try:
@@ -201,24 +266,25 @@ class YoloNode(Node):
             #     self.get_logger().warn(f"Failed to transform to world coordinates: {e}")
             #     continue
 
-            # Create a Point for the camera frame coordinates
-            cone_point = Point(x=X_cam, y=Y_cam, z=Z_cam)
+            cone = ConeWithCovariance()
+            cone.point.x = X_cam
+            cone.point.y = Y_cam
+            cone.point.z = Z_cam
 
-            # Group the cone by color
             class_id = int(cls)
             if class_id == 0:
-                blue_cones.append(cone_point)
+                cone_array_msg.blue_cones.append(cone)
             elif class_id == 1:
-                yellow_cones.append(cone_point)
+                cone_array_msg.yellow_cones.append(cone)
             elif class_id == 2:
-                orange_cones.append(cone_point)
+                cone_array_msg.orange_cones.append(cone)
             elif class_id == 3:
-                big_orange_cones.append(cone_point)
+                cone_array_msg.big_orange_cones.append(cone)
             else:
-                unknown_cones.append(cone_point)
+                cone_array_msg.unknown_color_cones.append(cone)
 
             # Annotate the image with bounding boxes and metadata
-            color_rgb = color_map.get(class_id, color_map['default'])
+            color_rgb = YoloNode.COLOR_MAP.get(class_id, YoloNode.COLOR_MAP['default'])
             cv2.rectangle(
                 annotated_image,
                 (x_min, y_min),
@@ -232,7 +298,7 @@ class YoloNode(Node):
                 label,
                 (x_min, y_min - 10),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,  # Font size
+                0.5,        # Font size
                 color_rgb,  # Color
                 1           # Thickness
             )
@@ -247,13 +313,6 @@ class YoloNode(Node):
                 -1                    # Thickness (-1 means filled circle)
             )
 
-        # Populate the ConeArray message
-        cone_array_msg.blue_cones = blue_cones
-        cone_array_msg.yellow_cones = yellow_cones
-        cone_array_msg.orange_cones = orange_cones
-        cone_array_msg.big_orange_cones = big_orange_cones
-        cone_array_msg.unknown_color_cones = unknown_cones
-
         # Publish the ConeArray message
         self.pub_cone_array.publish(cone_array_msg)
         self.get_logger().info("ConeArray message published.")
@@ -265,7 +324,6 @@ class YoloNode(Node):
             self.get_logger().info("Annotated image published successfully.")
         except Exception as e:
             self.get_logger().error(f"Failed to publish annotated image: {e}")
-
 
 
     # def process_image(self):

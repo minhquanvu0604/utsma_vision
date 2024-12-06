@@ -2,8 +2,6 @@ DOCKERFILE=zed2i-l4t-LONG.Dockerfile
 IMAGE_NAME=utsma/zed_image
 CONTAINER_NAME=zed_container
 
-# Allow X11 access for the container
-xhost +local:root
 
 # Remove old containers
 docker ps -a | grep $IMAGE_NAME | awk '{print $1}' | xargs -r docker rm
