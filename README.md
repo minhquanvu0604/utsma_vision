@@ -1,12 +1,26 @@
+# Modules 
+- `model_inference` : real time detection and data processing
+  - `coord_light_yolov5` : 2D image bounding box detection
+    - python inference loop 
+    - TODO: cone clustering to query robust depth
+  - `deeplabv3`
+    - C++ inference loop using LibTorch
+    - TODO: add docs
+
 # Running - prepare for push test 4-12-2024
 ```bash
+# Bulding command
 # colcon build --symlink-install --cmake-args=-DCMAKE_BUILD_TYPE=Release --parallel-workers $(nproc)
 colcon build --symlink-install --cmake-args=-DCMAKE_BUILD_TYPE=Release --parallel-workers $(nproc) --packages-select eufs_msgs
+
+# Launching zed ROS 2 driver
 ros2 launch zed_wrapper zed_camera.launch.py camera_model:=zed2i
 ```
 
 # Set up
 Check if the camera is connected using any camera app (there are `vlc` or `cheese`)
+
+Run the zed ROS 2 driver
 
 # Problem Log
 - Latency in image transmission - high even when streaming raw images without ROS, possible solutions are
