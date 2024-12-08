@@ -1,11 +1,12 @@
 # Modules 
-- `model_inference` : real time detection and data processing
+- `model_inference` : real time detection and data processing loop
   - `coord_light_yolov5` : 2D image bounding box detection
     - python inference loop 
     - TODO: cone clustering to query robust depth
   - `deeplabv3`
     - C++ inference loop using LibTorch
     - TODO: add docs
+- `camera_driver` : modied ROS 2 driver for zed camera
 
 # Running - prepare for push test 4-12-2024
 ```bash
