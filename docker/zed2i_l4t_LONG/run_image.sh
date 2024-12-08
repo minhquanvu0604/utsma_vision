@@ -1,6 +1,8 @@
 IMAGE_NAME=utsma/zed_image
 CONTAINER_NAME=zed_container
 
+xhost +local:root
+
 docker run -it --runtime=nvidia \
    --name $CONTAINER_NAME \
    --privileged \
@@ -13,4 +15,5 @@ docker run -it --runtime=nvidia \
    --env QT_X11_NO_MITSHM=1 \
    --volume /tmp/.X11-unix:/tmp/.X11-unix \
    --volume /home/utsma/zedsdk_ros2_docker/sdk_config:/usr/local/zed/resources \
+   --volume /home/utsma/git/utsma_vision:/root/ros2_ws/src/utsma_vision \
    $IMAGE_NAME
