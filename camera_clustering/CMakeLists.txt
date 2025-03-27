@@ -25,5 +25,5 @@ include_directories(
 )
 
 add_subdirectory(src)
-set(PROJECT_LIBRARIES pcl_k_means euc_dist_seg)
+set(PROJECT_LIBRARIES pcl_k_means euc_dist_seg detect_cone)
 add_subdirectory(test)
