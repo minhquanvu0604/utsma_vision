@@ -195,8 +195,9 @@ bool EucDistSeg::euclidian_distance_segmentation(std::vector<pcl::PointCloud<pcl
   seg.setDistanceThreshold(config.planar_threshold);
 
   pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_f (new pcl::PointCloud<pcl::PointXYZ>);
-  uint32_t n_lowres_start = pc_lowres->size();
-  while (pc_lowres->size() > 0.5 * n_lowres_start)
+  for (int i = 0; i < 3; i++)
+  // uint32_t n_lowres_start = pc_lowres->size();
+  // while (pc_lowres->size() > 0.5 * n_lowres_start)
   {
     // Segment the largest planar component from the remaining cloud
     seg.setInputCloud(pc_lowres);

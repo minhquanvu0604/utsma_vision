@@ -31,7 +31,7 @@ struct Config {
         uint32_t max_planar_iterations = 10;
         float planar_threshold = 0.01f;
 
-        float cluster_tolerance = 0.02f;
+        float cluster_tolerance = 0.04f;
         uint32_t min_cluster_size = 100;
         uint32_t max_cluster_size = 25000;
     } euc_dist_seg;
