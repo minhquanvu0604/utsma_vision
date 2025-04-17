@@ -29,7 +29,7 @@ struct Config {
 
     struct euc_dist_seg {
         uint32_t max_planar_iterations = 10;
-        float planar_threshold = 0.02f;
+        float planar_threshold = 0.01f;
 
         float cluster_tolerance = 0.02f;
         uint32_t min_cluster_size = 100;
@@ -65,6 +65,7 @@ private:
 //private:
 public:
     pcl::PointCloud<pcl::PointXYZ>::Ptr& pc_;
+    pcl::PointCloud<pcl::PointXYZ>::Ptr pc_filtered_;
     Config config_;
 };
 
